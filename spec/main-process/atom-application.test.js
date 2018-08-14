@@ -634,6 +634,29 @@ describe('AtomApplication', function () {
     assert(electron.app.didQuit())
   })
 
+  it('closes successfully unloaded windows when quitting', async () => {
+    const atomApplication = buildAtomApplication()
+    const [window1] = await atomApplication.launch(parseCommandLine([]))
+    const [window2] = await atomApplication.launch(parseCommandLine([]))
+    await Promise.all([window1.loadedPromise, window2.loadedPromise])
+    await evalInWebContents(window1.browserWindow.webContents, sendBackToMainProcess => {
+      atom.workspace.getActiveTextEditor().insertText('unsaved text')
+      sendBackToMainProcess()
+    })
+
+    // Choosing "Cancel"
+    mockElectronShowMessageBox({response: 1})
+    electron.app.quit()
+    await atomApplication.lastBeforeQuitPromise
+    assert(atomApplication.getAllWindows().length === 1)
+
+    // Choosing "Don't save"
+    mockElectronShowMessageBox({response: 2})
+    electron.app.quit()
+    await atomApplication.lastBeforeQuitPromise
+    assert(atomApplication.getAllWindows().length === 0)
+  })
+
   function buildAtomApplication (params = {}) {
     const atomApplication = new AtomApplication(Object.assign({
       resourcePath: ATOM_RESOURCE_PATH,
